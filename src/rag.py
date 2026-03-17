@@ -9,8 +9,9 @@ from langchain_huggingface import HuggingFaceEmbeddings
 load_dotenv()
 
 embeddings = HuggingFaceEmbeddings(
-    model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    model_name="BAAI/bge-small-en-v1.5"
 )
+
 splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
 
 def extract_video_id(youtube_input: str) -> str:
