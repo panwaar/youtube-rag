@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+langchain
+langchain-groq
+langchain-huggingface
+langchain-community
+faiss-cpu
+youtube-transcript-api
+sentence-transformers
+python-dotenv
+pydantic
+jinja2
+slowapi

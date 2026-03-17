@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>YouTube RAG</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet"/>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #222121; --surface: #111; --border: #222;
+    --accent: #e8ff47; --accent-dim: rgba(232,255,71,0.08);
+    --text: #f0f0f0; --muted: #666; --radius: 12px;
+  }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: 'Syne', sans-serif;
+    min-height: 100vh; display: flex;
+    flex-direction: column; align-items: center; padding: 40px 20px;
+  }
+  body::before {
+    content: ''; position: fixed; top: -200px; left: 50%;
+    transform: translateX(-50%); width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(232,255,71,0.04) 0%, transparent 70%);
+    pointer-events: none; z-index: 0;
+  }
+  .container { width: 100%; max-width: 720px; position: relative; z-index: 1; }
+
+  /* Header */
+  header { margin-bottom: 40px; display: flex; align-items: center; justify-content: space-between; }
+  .header-left { display: flex; align-items: center; gap: 14px; }
+  .logo { width: 36px; height: 36px; background: var(--accent); border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+  .logo svg { width: 18px; height: 18px; }
+  header h1 { font-size: 1.4rem; font-weight: 800; letter-spacing: -0.02em; }
+  header h1 span { color: var(--accent); }
+
+  /* Usage bar */
+  .usage-bar { display: flex; gap: 12px; align-items: center; }
+  .usage-pill { font-family: 'DM Mono', monospace; font-size: 0.7rem; color: var(--muted); background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 4px 10px; display: flex; align-items: center; gap: 5px; }
+  .usage-pill .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+  .usage-pill.warning .dot { background: #ffa500; }
+  .usage-pill.danger .dot { background: #ff5050; }
+  .usage-pill.warning { border-color: #ffa50044; color: #ffa500; }
+  .usage-pill.danger { border-color: #ff505044; color: #ff5050; }
+
+  /* Steps */
+  .steps { display: flex; gap: 8px; margin-bottom: 28px; align-items: center; }
+  .step { display: flex; align-items: center; gap: 8px; font-size: 0.75rem; font-weight: 600; color: var(--muted); letter-spacing: 0.05em; text-transform: uppercase; }
+  .step.active { color: var(--accent); }
+  .step.done { color: #444; }
+  .step-num { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid currentColor; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; }
+  .step.active .step-num { background: var(--accent); border-color: var(--accent); color: #0a0a0a; }
+  .step-divider { flex: 1; height: 1px; background: var(--border); max-width: 40px; }
+
+  /* Cards */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; margin-bottom: 14px; }
+  .card-label { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; }
+
+  /* Input */
+  .input-row { display: flex; gap: 10px; }
+  input[type="text"] {
+    flex: 1; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px 16px; color: var(--text);
+    font-family: 'DM Mono', monospace; font-size: 0.85rem;
+    outline: none; transition: border-color 0.2s;
+  }
+  input[type="text"]:focus { border-color: var(--accent); }
+  input[type="text"]::placeholder { color: #444; }
+
+  /* Buttons */
+  .btn { padding: 12px 20px; border-radius: 8px; border: none; font-family: 'Syne', sans-serif; font-size: 0.85rem; font-weight: 700; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+  .btn-primary { background: var(--accent); color: #0a0a0a; }
+  .btn-primary:hover { background: #d4eb3a; transform: translateY(-1px); }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+  .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); font-size: 0.78rem; padding: 8px 14px; display: inline-flex; align-items: center; gap: 6px; }
+  .btn-ghost:hover { border-color: #444; color: var(--text); }
+
+  /* Status */
+  .status { display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem; font-weight: 600; padding: 6px 12px; border-radius: 20px; margin-top: 12px; font-family: 'DM Mono', monospace; }
+  .status.loading { background: rgba(255,200,0,0.1); color: #ffc800; }
+  .status.success { background: rgba(232,255,71,0.1); color: var(--accent); }
+  .status.error { background: rgba(255,80,80,0.1); color: #ff5050; }
+  .status.warning { background: rgba(255,160,0,0.1); color: #ffa500; }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .status.loading .status-dot { animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  /* Video tags */
+  .video-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; min-height: 0; }
+  .video-tag { display: flex; align-items: center; gap: 6px; padding: 5px 12px; background: var(--accent-dim); border: 1px solid rgba(232,255,71,0.15); border-radius: 20px; font-size: 0.75rem; font-family: 'DM Mono', monospace; color: var(--accent); }
+  .video-tag button { background: none; border: none; color: #666; cursor: pointer; font-size: 0.9rem; line-height: 1; padding: 0; margin-left: 2px; }
+  .video-tag button:hover { color: #ff5050; }
+
+  /* Summary */
+  #summary-card { display: none; }
+  #summary-card.visible { display: block; }
+  .summary-text { font-size: 0.9rem; line-height: 1.7; color: #bbb; margin-bottom: 16px; }
+  .suggested-label { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+  .suggested-questions { display: flex; flex-direction: column; gap: 8px; }
+  .suggested-btn { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; color: #bbb; font-family: 'Syne', sans-serif; font-size: 0.83rem; cursor: pointer; text-align: left; transition: all 0.2s; }
+  .suggested-btn:hover { border-color: var(--accent); color: var(--text); }
+
+  /* Chat */
+  #chat-section { display: none; }
+  #chat-section.visible { display: block; }
+  #messages { display: flex; flex-direction: column; gap: 16px; max-height: 420px; overflow-y: auto; padding-right: 4px; margin-bottom: 16px; }
+  #messages::-webkit-scrollbar { width: 4px; }
+  #messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  .msg { display: flex; flex-direction: column; gap: 4px; animation: fadeUp 0.3s ease; }
+  @keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+  .msg-role { font-size: 0.65rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); padding-left: 4px; }
+  .msg.assistant .msg-role { color: var(--accent); }
+  .msg-bubble { padding: 14px 16px; border-radius: 10px; font-size: 0.9rem; line-height: 1.6; max-width: 92%; }
+  .msg.user .msg-bubble { background: #1a1a1a; border: 1px solid var(--border); align-self: flex-end; font-family: 'DM Mono', monospace; font-size: 0.82rem; }
+  .msg.assistant .msg-bubble { background: var(--accent-dim); border: 1px solid rgba(232,255,71,0.12); }
+
+  /* Message counter */
+  .msg-counter { font-family: 'DM Mono', monospace; font-size: 0.7rem; color: var(--muted); text-align: right; margin-bottom: 10px; }
+  .msg-counter.warning { color: #ffa500; }
+  .msg-counter.danger { color: #ff5050; }
+
+  /* Sources */
+  .sources-toggle { font-size: 0.72rem; color: var(--muted); background: none; border: none; cursor: pointer; font-family: 'DM Mono', monospace; padding: 6px 4px 0; transition: color 0.2s; }
+  .sources-toggle:hover { color: var(--accent); }
+  .sources-list { display: none; margin-top: 8px; flex-direction: column; gap: 6px; }
+  .sources-list.open { display: flex; }
+  .source-chunk { background: #0f0f0f; border: 1px solid #1a1a1a; border-radius: 6px; padding: 10px 12px; font-size: 0.75rem; font-family: 'DM Mono', monospace; color: #666; line-height: 1.6; }
+  .source-chunk span { color: #444; font-size: 0.68rem; display: block; margin-bottom: 4px; }
+
+  /* Typing */
+  .typing .msg-bubble { display: flex; gap: 5px; align-items: center; padding: 16px; }
+  .typing-dot { width: 6px; height: 6px; background: var(--accent); border-radius: 50%; animation: bounce 1.2s infinite; }
+  .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-6px)} }
+
+  /* Chat actions */
+  .chat-actions { display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 8px; }
+  .ask-row { display: flex; gap: 10px; }
+
+  /* Limit reached banner */
+  .limit-banner { background: rgba(255,80,80,0.08); border: 1px solid rgba(255,80,80,0.2); border-radius: 8px; padding: 12px 16px; font-size: 0.82rem; color: #ff5050; font-family: 'DM Mono', monospace; margin-bottom: 12px; display: none; }
+  .limit-banner.visible { display: block; }
+
+  /* Footer */
+  footer { margin-top: 48px; font-size: 0.72rem; color: #333; font-family: 'DM Mono', monospace; text-align: center; }
+  footer span { color: #444; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <div class="header-left">
+      <div class="logo">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="#0a0a0a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <h1>YouTube <span>RAG</span></h1>
+    </div>
+    <div class="usage-bar">
+      <div class="usage-pill" id="video-counter">
+        <div class="dot"></div>
+        <span id="video-counter-text">0 / 5 videos</span>
+      </div>
+      <div class="usage-pill" id="msg-counter">
+        <div class="dot"></div>
+        <span id="msg-counter-text">0 / 50 messages</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="steps">
+    <div class="step active" id="step1"><div class="step-num">1</div>Load Video</div>
+    <div class="step-divider"></div>
+    <div class="step" id="step2"><div class="step-num">2</div>Ask Questions</div>
+  </div>
+
+  <!-- Load Card -->
+  <div class="card" id="load-card">
+    <div class="card-label">YouTube Video URL</div>
+    <div class="video-tags" id="video-tags"></div>
+    <div class="input-row">
+      <input type="text" id="video-url" placeholder="https://www.youtube.com/watch?v=..."/>
+      <button class="btn btn-primary" id="load-btn" onclick="loadVideo()">Load</button>
+    </div>
+    <div id="load-status"></div>
+  </div>
+
+  <!-- Summary Card -->
+  <div class="card" id="summary-card">
+    <div class="card-label">Video Summary</div>
+    <p class="summary-text" id="summary-text"></p>
+    <div class="suggested-label">Suggested Questions</div>
+    <div class="suggested-questions" id="suggested-questions"></div>
+  </div>
+
+  <!-- Chat Section -->
+  <div id="chat-section">
+    <div class="card">
+      <div class="card-label">Conversation</div>
+      <div class="chat-actions">
+        <button class="btn btn-ghost" onclick="exportChat()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Export chat
+        </button>
+        <button class="btn btn-ghost" onclick="clearSession()">Clear session</button>
+      </div>
+
+      <!-- Limit banners -->
+      <div class="limit-banner" id="video-limit-banner">
+        ⚠ Maximum 5 videos reached. Clear session to load new videos.
+      </div>
+      <div class="limit-banner" id="msg-limit-banner">
+        ⚠ You've reached the 50 message limit. Clear session to continue.
+      </div>
+
+      <div id="messages"></div>
+      <div class="ask-row">
+        <input type="text" id="question-input" placeholder="Ask anything about this video..." onkeydown="if(event.key==='Enter') askQuestion()"/>
+        <button class="btn btn-primary" id="ask-btn" onclick="askQuestion()">Ask</button>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    Powered by <span>LLaMA 3.3 · Groq · FAISS · FastAPI</span><br><br>
+    Created By <span>Rahul Panwar</span>
+  </footer>
+</div>
+
+<script>
+  // Load status on page load
+  window.addEventListener('load', fetchStatus);
+
+  async function fetchStatus() {
+    try {
+      const res = await fetch('/status');
+      const data = await res.json();
+      updateCounters(data.videos_loaded, data.messages_used);
+    } catch(e) {}
+  }
+
+  function updateCounters(videosLoaded, messagesUsed) {
+    const videoText = document.getElementById('video-counter-text');
+    const msgText = document.getElementById('msg-counter-text');
+    const videoPill = document.getElementById('video-counter');
+    const msgPill = document.getElementById('msg-counter');
+
+    videoText.textContent = `${videosLoaded} / 5 videos`;
+    msgText.textContent = `${messagesUsed} / 50 messages`;
+
+    // Update pill colors
+    videoPill.className = 'usage-pill' + (videosLoaded >= 5 ? ' danger' : videosLoaded >= 3 ? ' warning' : '');
+    msgPill.className = 'usage-pill' + (messagesUsed >= 50 ? ' danger' : messagesUsed >= 35 ? ' warning' : '');
+
+    // Show limit banners
+    document.getElementById('video-limit-banner').classList.toggle('visible', videosLoaded >= 5);
+    document.getElementById('msg-limit-banner').classList.toggle('visible', messagesUsed >= 50);
+
+    // Disable load button if video limit reached
+    document.getElementById('load-btn').disabled = videosLoaded >= 5;
+
+    // Disable ask if message limit reached
+    const askBtn = document.getElementById('ask-btn');
+    const askInput = document.getElementById('question-input');
+    if (messagesUsed >= 50) {
+      askBtn.disabled = true;
+      askInput.disabled = true;
+      askInput.placeholder = 'Message limit reached. Clear session to continue.';
+    }
+  }
+
+  function setLoadStatus(type, msg) {
+    document.getElementById('load-status').innerHTML =
+      `<div class="status ${type}"><div class="status-dot"></div>${msg}</div>`;
+  }
+
+  async function loadVideo() {
+    const url = document.getElementById('video-url').value.trim();
+    if (!url) return;
+
+    const btn = document.getElementById('load-btn');
+    btn.disabled = true;
+    setLoadStatus('loading', 'Fetching transcript and building index...');
+
+    try {
+      const res = await fetch('/load', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ youtube_url: url })
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        setLoadStatus('success', data.message);
+        addVideoTag(data.video_id);
+        document.getElementById('video-url').value = '';
+        document.getElementById('step1').className = 'step done';
+        document.getElementById('step2').className = 'step active';
+
+        // Update counters
+        updateCounters(data.videos_loaded, 0);
+
+        if (data.summary) {
+          document.getElementById('summary-text').textContent = data.summary;
+          const qContainer = document.getElementById('suggested-questions');
+          qContainer.innerHTML = '';
+          data.questions.forEach(q => {
+            const btn = document.createElement('button');
+            btn.className = 'suggested-btn';
+            btn.textContent = '→ ' + q;
+            btn.onclick = () => {
+              document.getElementById('question-input').value = q;
+              askQuestion();
+            };
+            qContainer.appendChild(btn);
+          });
+          document.getElementById('summary-card').classList.add('visible');
+        }
+
+        document.getElementById('chat-section').classList.add('visible');
+        document.getElementById('question-input').focus();
+
+      } else {
+        const msg = res.status === 429
+          ? 'Too many requests. Please wait a moment.'
+          : (data.detail || 'Failed to load video.');
+        setLoadStatus(res.status === 429 ? 'warning' : 'error', msg);
+        btn.disabled = false;
+      }
+    } catch(e) {
+      setLoadStatus('error', 'Server error. Is the API running?');
+      btn.disabled = false;
+    }
+  }
+
+  function addVideoTag(videoId) {
+    const container = document.getElementById('video-tags');
+    if (document.getElementById('tag-' + videoId)) return;
+    const tag = document.createElement('div');
+    tag.className = 'video-tag';
+    tag.id = 'tag-' + videoId;
+    tag.innerHTML = `▶ ${videoId} <button onclick="removeTag('${videoId}')" title="Remove">✕</button>`;
+    container.appendChild(tag);
+  }
+
+  function removeTag(videoId) {
+    const tag = document.getElementById('tag-' + videoId);
+    if (tag) tag.remove();
+  }
+
+  function addMessage(role, text, sources = []) {
+    const messages = document.getElementById('messages');
+    const typing = document.getElementById('typing');
+    if (typing) typing.remove();
+
+    const div = document.createElement('div');
+    div.className = `msg ${role}`;
+
+    let sourcesHTML = '';
+    if (role === 'assistant' && sources.length > 0) {
+      const chunksHTML = sources.map((s, i) =>
+        `<div class="source-chunk"><span>source ${i+1} · ${s.video_id}</span>${s.content}...</div>`
+      ).join('');
+      sourcesHTML = `
+        <button class="sources-toggle" onclick="toggleSources(this)">▸ Show sources (${sources.length})</button>
+        <div class="sources-list">${chunksHTML}</div>`;
+    }
+
+    div.innerHTML = `
+      <div class="msg-role">${role === 'user' ? 'You' : 'Assistant'}</div>
+      <div class="msg-bubble">${text}</div>
+      ${sourcesHTML}`;
+    messages.appendChild(div);
+    messages.scrollTop = messages.scrollHeight;
+  }
+
+  function toggleSources(btn) {
+    const list = btn.nextElementSibling;
+    const isOpen = list.classList.toggle('open');
+    const count = list.querySelectorAll('.source-chunk').length;
+    btn.textContent = isOpen ? `▾ Hide sources (${count})` : `▸ Show sources (${count})`;
+  }
+
+  function showTyping() {
+    const messages = document.getElementById('messages');
+    const div = document.createElement('div');
+    div.className = 'msg assistant typing';
+    div.id = 'typing';
+    div.innerHTML = `
+      <div class="msg-role">Assistant</div>
+      <div class="msg-bubble">
+        <div class="typing-dot"></div>
+        <div class="typing-dot"></div>
+        <div class="typing-dot"></div>
+      </div>`;
+    messages.appendChild(div);
+    messages.scrollTop = messages.scrollHeight;
+  }
+
+  async function askQuestion() {
+    const input = document.getElementById('question-input');
+    const question = input.value.trim();
+    if (!question) return;
+
+    const btn = document.getElementById('ask-btn');
+    btn.disabled = true;
+    input.value = '';
+
+    addMessage('user', question);
+    showTyping();
+
+    try {
+      const res = await fetch('/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question })
+      });
+      const data = await res.json();
+
+      const msg = res.status === 429
+        ? 'You are sending too many requests. Please wait a moment.'
+        : (data.answer || data.detail || 'No response.');
+
+      addMessage('assistant', msg, res.ok ? (data.sources || []) : []);
+
+      // Update counters after each message
+      if (res.ok) {
+        updateCounters(
+          document.querySelectorAll('.video-tag').length,
+          data.messages_used
+        );
+      }
+    } catch(e) {
+      addMessage('assistant', 'Error connecting to server.');
+    }
+
+    btn.disabled = false;
+    input.focus();
+  }
+
+  async function clearSession() {
+    await fetch('/clear', { method: 'POST' });
+    document.getElementById('messages').innerHTML = '';
+    document.getElementById('video-tags').innerHTML = '';
+    document.getElementById('summary-card').classList.remove('visible');
+    document.getElementById('chat-section').classList.remove('visible');
+    document.getElementById('step1').className = 'step active';
+    document.getElementById('step2').className = 'step';
+    document.getElementById('load-status').innerHTML = '';
+    document.getElementById('video-url').value = '';
+    document.getElementById('video-limit-banner').classList.remove('visible');
+    document.getElementById('msg-limit-banner').classList.remove('visible');
+    document.getElementById('ask-btn').disabled = false;
+    const askInput = document.getElementById('question-input');
+    askInput.disabled = false;
+    askInput.placeholder = 'Ask anything about this video...';
+    updateCounters(0, 0);
+  }
+
+  function exportChat() {
+    const messages = document.querySelectorAll('.msg');
+    if (messages.length === 0) { alert('No messages to export yet!'); return; }
+
+    const tags = document.querySelectorAll('.video-tag');
+    const videoIds = [...tags].map(t =>
+      t.textContent.replace('✕','').replace('▶','').trim()
+    ).join(', ');
+
+    let chatLines = [];
+    messages.forEach(msg => {
+      if (msg.classList.contains('typing')) return;
+      const role = msg.querySelector('.msg-role')?.textContent?.trim() || '';
+      const bubble = msg.querySelector('.msg-bubble')?.textContent?.trim() || '';
+      if (role && bubble) chatLines.push({ role, bubble });
+    });
+
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
+    const timeStr = now.toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit' });
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>YouTube RAG — Chat Export</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0a0a0a; color: #f0f0f0; font-family: 'Syne', sans-serif; padding: 48px 32px; max-width: 760px; margin: 0 auto; }
+  .header { display: flex; align-items: center; justify-content: space-between; padding-bottom: 24px; border-bottom: 1px solid #222; margin-bottom: 32px; }
+  .header-left { display: flex; align-items: center; gap: 12px; }
+  .logo { width: 32px; height: 32px; background: #e8ff47; border-radius: 7px; display: flex; align-items: center; justify-content: center; }
+  .logo-inner { width: 14px; height: 14px; border: 2px solid #0a0a0a; border-radius: 2px; }
+  .title { font-size: 1.2rem; font-weight: 800; letter-spacing: -0.02em; }
+  .title span { color: #e8ff47; }
+  .meta { text-align: right; font-family: 'DM Mono', monospace; font-size: 0.72rem; color: #555; line-height: 1.8; }
+  .video-info { background: rgba(232,255,71,0.06); border: 1px solid rgba(232,255,71,0.12); border-radius: 8px; padding: 10px 16px; margin-bottom: 28px; font-family: 'DM Mono', monospace; font-size: 0.78rem; color: #e8ff47; }
+  .messages { display: flex; flex-direction: column; gap: 20px; }
+  .msg { display: flex; flex-direction: column; gap: 6px; }
+  .msg-role { font-size: 0.65rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; padding-left: 4px; }
+  .msg.user .msg-role { color: #666; }
+  .msg.assistant .msg-role { color: #e8ff47; }
+  .msg-bubble { padding: 14px 18px; border-radius: 10px; font-size: 0.88rem; line-height: 1.7; max-width: 88%; }
+  .msg.user .msg-bubble { background: #1a1a1a; border: 1px solid #222; align-self: flex-end; font-family: 'DM Mono', monospace; font-size: 0.82rem; }
+  .msg.assistant .msg-bubble { background: rgba(232,255,71,0.06); border: 1px solid rgba(232,255,71,0.1); }
+  .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #1a1a1a; text-align: center; font-family: 'DM Mono', monospace; font-size: 0.68rem; color: #333; }
+  .footer span { color: #444; }
+  @media print {
+    body { background: #fff; color: #111; padding: 32px; }
+    .msg.user .msg-bubble { background: #f5f5f5; border-color: #ddd; color: #111; }
+    .msg.assistant .msg-bubble { background: #f9ffe0; border-color: #d4e84a; color: #111; }
+    .msg.assistant .msg-role { color: #5a6e00; }
+    .video-info { background: #f9ffe0; border-color: #d4e84a; color: #5a6e00; }
+    .title span { color: #5a6e00; }
+    .footer, .footer span { color: #999; }
+    .meta { color: #999; }
+  }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-left">
+      <div class="logo"><div class="logo-inner"></div></div>
+      <div class="title">YouTube <span>RAG</span></div>
+    </div>
+    <div class="meta">${dateStr}<br/>${timeStr}<br/>${chatLines.length} messages</div>
+  </div>
+  ${videoIds ? `<div class="video-info">▶ ${videoIds}</div>` : ''}
+  <div class="messages">
+    ${chatLines.map(m => `
+    <div class="msg ${m.role.toLowerCase() === 'you' ? 'user' : 'assistant'}">
+      <div class="msg-role">${m.role}</div>
+      <div class="msg-bubble">${m.bubble}</div>
+    </div>`).join('')}
+  </div>
+  <div class="footer">Generated by <span>YouTube RAG · LLaMA 3.3 · Groq · FAISS</span></div>
+</body>
+</html>`;
+
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `youtube-rag-chat-${now.toISOString().slice(0,10)}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+</script>
+</body>
+</html>
